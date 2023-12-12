@@ -8,7 +8,6 @@ import (
 	name "github.com/ipfs/kubo/core/commands/name"
 	ocmd "github.com/ipfs/kubo/core/commands/object"
 	"github.com/ipfs/kubo/core/commands/pin"
-	unixfs "github.com/ipfs/kubo/core/commands/unixfs"
 
 	cmds "github.com/ipfs/go-ipfs-cmds"
 	logging "github.com/ipfs/go-log"
@@ -28,7 +27,8 @@ const (
 	DebugOption      = "debug"
 	LocalOption      = "local" // DEPRECATED: use OfflineOption
 	OfflineOption    = "offline"
-	ApiOption        = "api" //nolint
+	ApiOption        = "api"      //nolint
+	ApiAuthOption    = "api-auth" //nolint
 )
 
 var Root = &cmds.Command{
@@ -110,6 +110,7 @@ The CLI will exit with one of the following values:
 		cmds.BoolOption(LocalOption, "L", "Run the command locally, instead of using the daemon. DEPRECATED: use --offline."),
 		cmds.BoolOption(OfflineOption, "Run the command offline."),
 		cmds.StringOption(ApiOption, "Use a specific API instance (defaults to /ip4/127.0.0.1/tcp/5001)"),
+		cmds.StringOption(ApiAuthOption, "Optional RPC API authorization secret (defined as AuthSecret in API.Authorizations config)"),
 
 		// global options, added to every command
 		cmdenv.OptionCidBase,
@@ -141,7 +142,6 @@ var rootSubcommands = map[string]*cmds.Command{
 	"dht":       DhtCmd,
 	"routing":   RoutingCmd,
 	"diag":      DiagCmd,
-	"dns":       DNSCmd,
 	"id":        IDCmd,
 	"key":       KeyCmd,
 	"log":       LogCmd,
@@ -155,10 +155,7 @@ var rootSubcommands = map[string]*cmds.Command{
 	"refs":      RefsCmd,
 	"resolve":   ResolveCmd,
 	"swarm":     SwarmCmd,
-	"tar":       TarCmd,
-	"file":      unixfs.UnixFSCmd,
 	"update":    ExternalBinary("Please see https://github.com/ipfs/ipfs-update/blob/master/README.md#install for installation instructions."),
-	"urlstore":  urlStoreCmd,
 	"version":   VersionCmd,
 	"shutdown":  daemonShutdownCmd,
 	"cid":       CidCmd,
@@ -186,7 +183,6 @@ var rootROSubcommands = map[string]*cmds.Command{
 		},
 	},
 	"get": GetCmd,
-	"dns": DNSCmd,
 	"ls":  LsCmd,
 	"name": {
 		Subcommands: map[string]*cmds.Command{

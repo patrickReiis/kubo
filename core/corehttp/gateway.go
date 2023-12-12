@@ -7,9 +7,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/ipfs/boxo/blockservice"
-	iface "github.com/ipfs/boxo/coreiface"
 	"github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/gateway"
@@ -20,6 +20,7 @@ import (
 	version "github.com/ipfs/kubo"
 	"github.com/ipfs/kubo/config"
 	"github.com/ipfs/kubo/core"
+	iface "github.com/ipfs/kubo/core/coreiface"
 	"github.com/ipfs/kubo/core/node"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -80,7 +81,11 @@ func Libp2pGatewayOption() ServeOption {
 	return func(n *core.IpfsNode, _ net.Listener, mux *http.ServeMux) (*http.ServeMux, error) {
 		bserv := blockservice.New(n.Blocks.Blockstore(), offline.Exchange(n.Blocks.Blockstore()))
 
-		backend, err := gateway.NewBlocksBackend(bserv)
+		backend, err := gateway.NewBlocksBackend(bserv,
+			// GatewayOverLibp2p only returns things that are in local blockstore
+			// (same as Gateway.NoFetch=true), we have to pass offline path resolver
+			gateway.WithResolver(n.OfflineUnixFSPathResolver),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -110,6 +115,8 @@ func newGatewayBackend(n *core.IpfsNode) (gateway.IPFSBackend, error) {
 	bserv := n.Blocks
 	var vsRouting routing.ValueStore = n.Routing
 	nsys := n.Namesys
+	pathResolver := n.UnixFSPathResolver
+
 	if cfg.Gateway.NoFetch {
 		bserv = blockservice.New(bserv.Blockstore(), offline.Exchange(bserv.Blockstore()))
 
@@ -129,9 +136,17 @@ func newGatewayBackend(n *core.IpfsNode) (gateway.IPFSBackend, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error constructing namesys: %w", err)
 		}
+
+		// Gateway.NoFetch=true requires offline path resolver
+		// to avoid fetching missing blocks during path traversal
+		pathResolver = n.OfflineUnixFSPathResolver
 	}
 
-	backend, err := gateway.NewBlocksBackend(bserv, gateway.WithValueStore(vsRouting), gateway.WithNameSystem(nsys))
+	backend, err := gateway.NewBlocksBackend(bserv,
+		gateway.WithValueStore(vsRouting),
+		gateway.WithNameSystem(nsys),
+		gateway.WithResolver(pathResolver),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -195,10 +210,10 @@ func (o *offlineGatewayErrWrapper) GetIPNSRecord(ctx context.Context, c cid.Cid)
 	return rec, err
 }
 
-func (o *offlineGatewayErrWrapper) ResolveMutable(ctx context.Context, path path.Path) (path.ImmutablePath, error) {
-	imPath, err := o.gwimpl.ResolveMutable(ctx, path)
+func (o *offlineGatewayErrWrapper) ResolveMutable(ctx context.Context, path path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
+	imPath, ttl, lastMod, err := o.gwimpl.ResolveMutable(ctx, path)
 	err = offlineErrWrap(err)
-	return imPath, err
+	return imPath, ttl, lastMod, err
 }
 
 func (o *offlineGatewayErrWrapper) GetDNSLinkRecord(ctx context.Context, s string) (path.Path, error) {
